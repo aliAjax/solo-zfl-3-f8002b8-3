@@ -1,9 +1,11 @@
 import { useNavigate } from 'react-router-dom';
-import { MapPin, Clock, Volume2, Sun, Armchair } from 'lucide-react';
+import { MapPin, Clock, Volume2, Sun, Armchair, AlertTriangle } from 'lucide-react';
 import type { Bench } from '@/types';
 import { MATERIAL_LABELS, SHADE_LABELS, NOISE_LABELS, STAY_DURATION_LABELS } from '@/types';
 import Rating from '@/components/Rating/Rating';
 import { calculateComfortScore, getComfortLevel, getComfortColor } from '@/utils/comfort';
+import { useWorkOrderStore } from '@/store/useWorkOrderStore';
+import { isOrderOverdue } from '@/utils/workOrder';
 
 interface BenchCardProps {
   bench: Bench;
@@ -15,6 +17,10 @@ export default function BenchCard({ bench, index = 0 }: BenchCardProps) {
   const comfortScore = calculateComfortScore(bench);
   const comfortLevel = getComfortLevel(comfortScore);
   const comfortColor = getComfortColor(comfortScore);
+
+  const workOrders = useWorkOrderStore((s) => s.orders);
+  const openOrder = workOrders.find((o) => o.benchId === bench.id && o.status !== 'closed');
+  const hasOverdueOrder = openOrder ? isOrderOverdue(openOrder) : false;
 
   const staggerClass = `stagger-${(index % 6) + 1}`;
 
@@ -29,7 +35,7 @@ export default function BenchCard({ bench, index = 0 }: BenchCardProps) {
             <Armchair className="w-10 h-10 text-moss-green/50" />
           </div>
         </div>
-        
+
         <div className="absolute top-3 right-3 px-2 py-1 bg-white/80 backdrop-blur-sm rounded-full text-xs font-medium">
           <span className={comfortColor}>{comfortLevel}</span>
           <span className="text-ink-light ml-1">{comfortScore}</span>
@@ -38,6 +44,13 @@ export default function BenchCard({ bench, index = 0 }: BenchCardProps) {
         <div className="absolute top-3 left-3 px-2 py-1 bg-white/80 backdrop-blur-sm rounded-full text-xs text-ink-light">
           {MATERIAL_LABELS[bench.material]}
         </div>
+
+        {hasOverdueOrder && (
+          <div className="absolute bottom-3 left-3 inline-flex items-center gap-1 px-2 py-1 bg-red-500/90 backdrop-blur-sm rounded-full text-xs font-medium text-white">
+            <AlertTriangle className="w-3 h-3" />
+            工单逾期
+          </div>
+        )}
       </div>
 
       <div className="p-4">

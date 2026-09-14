@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useBenchStore } from '@/store/useBenchStore';
+import { useInitWorkOrders } from '@/store/useWorkOrderStore';
 import FilterBar from '@/components/FilterBar/FilterBar';
 import BenchCard from '@/components/BenchCard/BenchCard';
 import { Armchair } from 'lucide-react';
@@ -7,6 +8,7 @@ import { Armchair } from 'lucide-react';
 export default function ListPage() {
   const { benches, getFilteredBenches, initialize, initialized } = useBenchStore();
   const filteredBenches = getFilteredBenches();
+  useInitWorkOrders();
 
   useEffect(() => {
     if (!initialized) {

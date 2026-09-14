@@ -5,6 +5,9 @@ import MapPage from '@/pages/MapPage/MapPage';
 import RankingPage from '@/pages/RankingPage/RankingPage';
 import BenchDetail from '@/pages/BenchDetail/BenchDetail';
 import AddEditPage from '@/pages/AddEditPage/AddEditPage';
+import WorkOrdersPage from '@/pages/WorkOrders/WorkOrdersPage';
+import WorkOrderNew from '@/pages/WorkOrders/WorkOrderNew';
+import WorkOrderDetail from '@/pages/WorkOrders/WorkOrderDetail';
 
 export default function App() {
   return (
@@ -19,6 +22,9 @@ export default function App() {
             <Route path="/bench/:id" element={<BenchDetail />} />
             <Route path="/add" element={<AddEditPage />} />
             <Route path="/edit/:id" element={<AddEditPage />} />
+            <Route path="/orders" element={<WorkOrdersPage />} />
+            <Route path="/orders/new" element={<WorkOrderNew />} />
+            <Route path="/orders/:id" element={<WorkOrderDetail />} />
           </Routes>
         </main>
       </div>

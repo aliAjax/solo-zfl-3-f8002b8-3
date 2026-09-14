@@ -14,8 +14,12 @@ import {
   Sunset,
   Moon,
   CloudSun,
+  AlertTriangle,
+  Plus,
+  ChevronRight,
 } from 'lucide-react';
 import { useBenchStore } from '@/store/useBenchStore';
+import { useInitWorkOrders, useWorkOrderStore } from '@/store/useWorkOrderStore';
 import {
   MATERIAL_LABELS,
   ORIENTATION_LABELS,
@@ -23,16 +27,21 @@ import {
   NOISE_LABELS,
   STAY_DURATION_LABELS,
   TIME_PERIOD_LABELS,
+  DEFECT_CATEGORY_LABELS,
 } from '@/types';
 import type { TimePeriodType } from '@/types';
 import Rating from '@/components/Rating/Rating';
 import { calculateComfortScore, getComfortLevel, getComfortColor } from '@/utils/comfort';
+import { formatDateCn, getOverdueDays, isOrderOverdue } from '@/utils/workOrder';
+import { OverdueBadge, SeverityBadge, StatusBadge } from '@/components/WorkOrder/WorkOrderBadges';
 
 export default function BenchDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { getBenchById, deleteBench, initialize, initialized } = useBenchStore();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  useInitWorkOrders();
+  const workOrders = useWorkOrderStore((s) => s.orders);
 
   useEffect(() => {
     if (!initialized) {
@@ -62,6 +71,13 @@ export default function BenchDetail() {
   const comfortLevel = getComfortLevel(comfortScore);
   const comfortColor = getComfortColor(comfortScore);
 
+  const benchOrders = workOrders
+    .filter((o) => o.benchId === bench.id)
+    .sort((a, b) => b.foundDate.localeCompare(a.foundDate));
+  const openOrder = benchOrders.find((o) => o.status !== 'closed');
+  const closedOrders = benchOrders.filter((o) => o.status === 'closed');
+  const openOverdue = openOrder ? isOrderOverdue(openOrder) : false;
+
   const timePeriodIcons: Record<TimePeriodType, typeof Sunrise> = {
     morning: Sunrise,
     noon: Sun,
@@ -78,6 +94,7 @@ export default function BenchDetail() {
   const handleDelete = () => {
     if (id) {
       deleteBench(id);
+      useWorkOrderStore.getState().deleteOrdersByBench(id);
       navigate('/');
     }
   };
@@ -91,6 +108,22 @@ export default function BenchDetail() {
         <ArrowLeft className="w-4 h-4" />
         <span className="text-sm">返回</span>
       </button>
+
+      {openOrder && openOverdue && (
+        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3 text-sm text-red-600 fade-in">
+          <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+          <span>
+            该长椅有逾期未整改的养护工单{' '}
+            <button
+              onClick={() => navigate(`/orders/${openOrder.id}`)}
+              className="font-semibold underline hover:text-red-700"
+            >
+              {openOrder.orderNo}
+            </button>
+            ，已逾期 {getOverdueDays(openOrder)} 天，请尽快处理。
+          </span>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
@@ -260,6 +293,86 @@ export default function BenchDetail() {
           </div>
 
           <div className="paper-texture rounded-xl shadow-paper p-6 fade-in opacity-0 stagger-3">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-serif text-lg font-semibold text-deep-brown">
+                养护工单
+              </h2>
+              {!openOrder && (
+                <button
+                  onClick={() => navigate(`/orders/new?benchId=${bench.id}`)}
+                  className="flex items-center gap-1 px-3 py-1.5 text-sm text-white bg-ochre hover:bg-ochre-light rounded-lg transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  开单
+                </button>
+              )}
+            </div>
+
+            {openOrder && (
+              <div className="space-y-3">
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700 flex items-start gap-2">
+                  <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                  <span>
+                    已有未结工单 <span className="font-semibold">{openOrder.orderNo}</span>
+                    ，处理完成后才能再次开单
+                  </span>
+                </div>
+
+                <div
+                  onClick={() => navigate(`/orders/${openOrder.id}`)}
+                  className={`p-4 rounded-lg cursor-pointer transition-colors border ${
+                    openOverdue
+                      ? 'bg-red-50/60 border-red-200 hover:bg-red-50'
+                      : 'bg-warm-cream/50 border-transparent hover:bg-warm-cream'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 flex-wrap mb-2">
+                    <span className="font-mono text-xs text-ink-light">{openOrder.orderNo}</span>
+                    <StatusBadge status={openOrder.status} />
+                    <SeverityBadge severity={openOrder.severity} />
+                    {openOverdue && <OverdueBadge days={getOverdueDays(openOrder)} />}
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-ink-light">
+                    <span>
+                      {DEFECT_CATEGORY_LABELS[openOrder.category]} · 发现于{' '}
+                      {formatDateCn(openOrder.foundDate)}
+                    </span>
+                    <ChevronRight className="w-4 h-4" />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {!openOrder && benchOrders.length === 0 && (
+              <p className="text-sm text-ink-light">
+                暂无养护工单，巡查发现缺陷时可点击右上角「开单」
+              </p>
+            )}
+
+            {closedOrders.length > 0 && (
+              <div className={openOrder ? 'mt-3 space-y-2' : 'space-y-2'}>
+                {closedOrders.map((order) => (
+                  <div
+                    key={order.id}
+                    onClick={() => navigate(`/orders/${order.id}`)}
+                    className="flex items-center justify-between gap-2 p-3 bg-warm-cream/40 rounded-lg cursor-pointer hover:bg-warm-cream transition-colors"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="font-mono text-xs text-ink-light flex-shrink-0">
+                        {order.orderNo}
+                      </span>
+                      <span className="text-xs text-ink-light truncate">
+                        {DEFECT_CATEGORY_LABELS[order.category]}
+                      </span>
+                    </div>
+                    <StatusBadge status={order.status} />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="paper-texture rounded-xl shadow-paper p-6 fade-in opacity-0 stagger-4">
             <h3 className="font-serif text-sm font-semibold text-deep-brown mb-3">
               档案信息
             </h3>

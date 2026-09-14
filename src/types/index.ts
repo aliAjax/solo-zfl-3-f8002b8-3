@@ -85,3 +85,68 @@ export const TIME_PERIOD_ICONS: Record<TimePeriodType, string> = {
   evening: 'sunset',
   night: 'moon',
 };
+
+// ---------- 养护工单 ----------
+
+export type DefectCategoryType = 'structure' | 'surface' | 'parts' | 'hygiene' | 'safety' | 'other';
+export type SeverityType = 'severe' | 'normal' | 'minor';
+export type WorkOrderStatus = 'pending' | 'fixing' | 'review' | 'closed';
+export type TimelineAction = 'create' | 'start' | 'submit' | 'review_pass' | 'review_reject';
+
+export interface WorkOrderTimelineEntry {
+  id: string;
+  action: TimelineAction;
+  time: string;
+  operator?: string;
+  note?: string;
+}
+
+export interface WorkOrder {
+  id: string;
+  orderNo: string;
+  benchId: string;
+  category: DefectCategoryType;
+  severity: SeverityType;
+  description: string;
+  /** 发现日期，YYYY-MM-DD */
+  foundDate: string;
+  status: WorkOrderStatus;
+  /** 整改人 */
+  assignee?: string;
+  /** 整改完成日期，YYYY-MM-DD */
+  completedDate?: string;
+  closedAt?: string;
+  timeline: WorkOrderTimelineEntry[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const DEFECT_CATEGORY_LABELS: Record<DefectCategoryType, string> = {
+  structure: '结构损坏',
+  surface: '表面破损',
+  parts: '部件缺失',
+  hygiene: '卫生问题',
+  safety: '安全隐患',
+  other: '其他',
+};
+
+export const SEVERITY_LABELS: Record<SeverityType, string> = {
+  severe: '严重',
+  normal: '一般',
+  minor: '轻微',
+};
+
+export const WORK_ORDER_STATUS_LABELS: Record<WorkOrderStatus, string> = {
+  pending: '待整改',
+  fixing: '整改中',
+  review: '待复检',
+  closed: '已关闭',
+};
+
+export const TIMELINE_ACTION_LABELS: Record<TimelineAction, string> = {
+  create: '开单',
+  start: '开始整改',
+  submit: '提交整改',
+  review_pass: '复检通过',
+  review_reject: '复检不通过',
+};
