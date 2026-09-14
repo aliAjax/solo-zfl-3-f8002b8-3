@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { useEffect } from 'react';
 import type { DefectCategoryType, SeverityType, TimelineAction, WorkOrder } from '@/types';
 import { WORK_ORDER_STATUS_LABELS } from '@/types';
-import { loadWorkOrders, saveWorkOrders } from '@/utils/storage';
+import { loadWorkOrders, saveWorkOrders, WORK_ORDER_STORAGE_KEY } from '@/utils/storage';
 import { generateId } from '@/utils/comfort';
 import { generateOrderNo, todayStr } from '@/utils/workOrder';
 import { buildMockWorkOrders } from '@/data/mockWorkOrders';
@@ -48,8 +48,16 @@ export const useWorkOrderStore = create<WorkOrderState & WorkOrderActions>((set,
     saveWorkOrders(orders);
   };
 
-  const updateOrder = (id: string, updater: (order: WorkOrder) => WorkOrder) => {
-    persist(get().orders.map((o) => (o.id === id ? updater(o) : o)));
+  /**
+   * 写入前重新读取 localStorage 中的最新工单数据。
+   * 多个标签页各自持有内存副本，直接基于内存判断并整表写回会互相覆盖；
+   * 所有写操作都改为「重读 → 校验 → 基于最新数据写回」，
+   * 保证其他标签页已创建的工单不被覆盖、冲突判断基于最新状态。
+   */
+  const readLatest = (): WorkOrder[] => loadWorkOrders() ?? get().orders;
+
+  const applyTo = (latest: WorkOrder[], id: string, updater: (order: WorkOrder) => WorkOrder) => {
+    persist(latest.map((o) => (o.id === id ? updater(o) : o)));
   };
 
   return {
@@ -78,8 +86,12 @@ export const useWorkOrderStore = create<WorkOrderState & WorkOrderActions>((set,
       if (!input.foundDate) return { ok: false, message: '请选择发现日期' };
       if (input.foundDate > todayStr()) return { ok: false, message: '发现日期不能晚于今天' };
 
-      const open = get().orders.find((o) => o.benchId === input.benchId && o.status !== 'closed');
+      // 重读最新数据再判断是否已有未结工单，避免与其他标签页并发开单互相覆盖
+      const latest = readLatest();
+      const open = latest.find((o) => o.benchId === input.benchId && o.status !== 'closed');
       if (open) {
+        // 保留先创建的工单；把最新数据同步进本侧，让对方工单及其编号在本页可见
+        set({ orders: latest });
         return {
           ok: false,
           message: `该长椅已有未结工单 ${open.orderNo}（${WORK_ORDER_STATUS_LABELS[open.status]}），请先处理完毕再开新单`,
@@ -89,7 +101,7 @@ export const useWorkOrderStore = create<WorkOrderState & WorkOrderActions>((set,
       const now = new Date().toISOString();
       const order: WorkOrder = {
         id: generateId(),
-        orderNo: generateOrderNo(get().orders, todayStr()),
+        orderNo: generateOrderNo(latest, todayStr()),
         benchId: input.benchId,
         category: input.category,
         severity: input.severity,
@@ -100,18 +112,19 @@ export const useWorkOrderStore = create<WorkOrderState & WorkOrderActions>((set,
         createdAt: now,
         updatedAt: now,
       };
-      persist([order, ...get().orders]);
+      persist([order, ...latest]);
       return { ok: true, order };
     },
 
     startFixing: (id) => {
-      const order = get().orders.find((o) => o.id === id);
+      const latest = readLatest();
+      const order = latest.find((o) => o.id === id);
       if (!order) return { ok: false, message: '工单不存在' };
       if (order.status === 'closed') return { ok: false, message: CLOSED_MESSAGE };
       if (order.status === 'fixing') return { ok: false, message: '工单已在整改中，无需重复操作' };
       if (order.status === 'review') return { ok: false, message: '工单正在待复检，不能回退到整改中' };
 
-      updateOrder(id, (o) => ({
+      applyTo(latest, id, (o) => ({
         ...o,
         status: 'fixing',
         updatedAt: new Date().toISOString(),
@@ -121,7 +134,8 @@ export const useWorkOrderStore = create<WorkOrderState & WorkOrderActions>((set,
     },
 
     submitRectification: (id, assignee, completedDate) => {
-      const order = get().orders.find((o) => o.id === id);
+      const latest = readLatest();
+      const order = latest.find((o) => o.id === id);
       if (!order) return { ok: false, message: '工单不存在' };
       if (order.status === 'closed') return { ok: false, message: CLOSED_MESSAGE };
       if (order.status === 'pending') {
@@ -141,7 +155,7 @@ export const useWorkOrderStore = create<WorkOrderState & WorkOrderActions>((set,
         return { ok: false, message: '完成日期不能晚于今天' };
       }
 
-      updateOrder(id, (o) => ({
+      applyTo(latest, id, (o) => ({
         ...o,
         status: 'review',
         assignee: name,
@@ -153,7 +167,8 @@ export const useWorkOrderStore = create<WorkOrderState & WorkOrderActions>((set,
     },
 
     reviewOrder: (id, passed, note) => {
-      const order = get().orders.find((o) => o.id === id);
+      const latest = readLatest();
+      const order = latest.find((o) => o.id === id);
       if (!order) return { ok: false, message: '工单不存在' };
       if (order.status === 'closed') return { ok: false, message: CLOSED_MESSAGE };
       if (order.status === 'pending') return { ok: false, message: '工单还未开始整改，不能跳步到复检' };
@@ -161,7 +176,7 @@ export const useWorkOrderStore = create<WorkOrderState & WorkOrderActions>((set,
 
       const now = new Date().toISOString();
       const trimmedNote = note?.trim() || undefined;
-      updateOrder(id, (o) => ({
+      applyTo(latest, id, (o) => ({
         ...o,
         status: passed ? 'closed' : 'fixing',
         closedAt: passed ? now : undefined,
@@ -175,10 +190,22 @@ export const useWorkOrderStore = create<WorkOrderState & WorkOrderActions>((set,
     },
 
     deleteOrdersByBench: (benchId) => {
-      persist(get().orders.filter((o) => o.benchId !== benchId));
+      persist(readLatest().filter((o) => o.benchId !== benchId));
     },
   };
 });
+
+// 其他标签页写入工单数据时同步到本页内存（storage 事件只在非写入方标签页触发）
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (event) => {
+    if (event.key === WORK_ORDER_STORAGE_KEY) {
+      const latest = loadWorkOrders();
+      if (latest !== null) {
+        useWorkOrderStore.setState({ orders: latest });
+      }
+    }
+  });
+}
 
 /** 在组件中确保工单数据已加载（幂等） */
 export function useInitWorkOrders() {

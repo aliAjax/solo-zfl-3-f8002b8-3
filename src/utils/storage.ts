@@ -1,7 +1,7 @@
 import type { Bench, WorkOrder } from '@/types';
 
 const STORAGE_KEY = 'bench-archive-data';
-const WORK_ORDER_STORAGE_KEY = 'bench-work-orders';
+export const WORK_ORDER_STORAGE_KEY = 'bench-work-orders';
 
 export function loadBenches(): Bench[] {
   try {
